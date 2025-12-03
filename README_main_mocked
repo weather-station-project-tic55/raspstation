@@ -1,1 +1,160 @@
+Este documento detalha o funcionamento e os blocos de código do script Python main_mocked_v01.py.
+Este script simula a coleta de dados de sensores (BME280 e luminosidade), realiza a média dos valores a cada 5 minutos e os insere em um banco de dados MySQL/MariaDB. Ele opera continuamente, sendo gerenciado pelo serviço raspcollect.service.
 
+🧱 1. Importações e Leitura do RCID
+Python
+
+import os
+import time
+import statistics
+import pymysql
+import logging
+import random
+
+# ============================================
+# LEITURA DO RCID (ID DA ESTACAO)
+# ============================================
+def get_rcid():
+    try:
+        path = os.path.expanduser("~/.config/station/rcid.txt") 
+        with open(path, "r") as f:
+            return int(f.read().strip())
+    except Exception as e:
+        print(f"Erro ao ler rcID: {e}")
+        return None
+
+Importações: Inclui as bibliotecas essenciais:
+
+os: Para manipulação de caminhos de sistema (especialmente para encontrar o arquivo rcid.txt).
+
+time: Para gerenciamento do loop e do intervalo de 5 minutos.
+
+statistics: Usado para calcular a média dos dados coletados.
+
+pymysql: O driver Python para comunicação com o banco de dados.
+
+logging: Para registrar o status e erros do script.
+
+random: Usado exclusivamente nas funções MOCK para gerar dados aleatórios.
+
+get_rcid(): Função crucial que lê o identificador único da estação (rcID) do arquivo ~/.config/station/rcid.txt, criado pelo instalador. Este ID é usado em todas as inserções de dados no banco.
+
+🧱 2. Funções de MOCK (Simulação de Sensores)
+
+# ============================================
+# MOCK DO SENSOR BME280
+# ============================================
+def read_bme280():
+    # ... gera temp, hum e press aleatórias
+    return temp, hum, press
+
+# ============================================
+# MOCK DE SENSOR DE LUMINOSIDADE
+# ============================================
+def read_luminosity():
+    return random.uniform(0, 1000)
+
+Simulação de Leitura: Estas funções utilizam o módulo random para simular as leituras de sensores.
+
+read_bme280(): Retorna uma tupla com valores aleatórios de Temperatura, Umidade e Pressão, dentro de faixas realistas.
+
+read_luminosity(): Retorna um valor aleatório de luminosidade.
+
+Nota: Na transição para produção, estas funções devem ser substituídas pelo código real de leitura do hardware (ex: usando a biblioteca adafruit-circuitpython-bme280).
+
+🧱 3. Filtro de Valores Inválidos
+
+# ============================================
+# FILTRO DE VALORES INVALIDOS
+# ============================================
+def is_valid(temp, hum, press, lum):
+    if temp is None or temp == 0 or temp < -20 or temp > 50:
+        return False
+    # ... outras validações (Humidade, Pressão, Luminosidade)
+    return True
+
+Controle de Qualidade: Esta função implementa um filtro de dados. Antes de adicionar qualquer leitura ao buffer (lista de dados), ela verifica se os valores se encontram dentro de limites físicos aceitáveis (ex: temperatura entre -20°C e 50°C).
+
+Função no Ciclo de Vida: Isso impede que leituras erráticas ou falhas momentâneas do sensor (que resultariam em None ou zero) contaminem a média enviada ao banco de dados.
+
+🧱 4. Configuração e Conexão com o Banco de Dados
+
+# ============================================
+# CONEXAO COM O BANCO MARIADB
+# ============================================
+# PLACEHOLDERS SERÃO SUBSTITUÍDOS PELO INSTALADOR
+DB_HOST = "DB_HOST_PLACEHOLDER"
+DB_USER = "DB_USER_PLACEHOLDER"
+DB_PASS = "DB_PASS_PLACEHOLDER"
+DB_NAME = "DB_NAME_PLACEHOLDER"
+
+def db_connect():
+    return pymysql.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASS,
+        database=DB_NAME
+    )
+
+Placeholders: As variáveis de conexão (DB_HOST, DB_USER, etc.) estão inicialmente com valores placeholder. O instalador em Bash (installstation_v01.sh) é responsável por substituir estas strings pelas credenciais reais antes de iniciar o script.
+
+db_connect(): Função que retorna uma nova conexão com o banco de dados MariaDB/MySQL usando o driver pymysql e as credenciais injetadas. A conexão é aberta apenas quando é necessário (no momento de inserir a média).
+
+🧱 5. Loop Principal de Coleta (main)
+
+# ============================================
+# LOOP PRINCIPAL DE COLETA
+# ============================================
+def main():
+    # ... Inicialização: rcID, buffers (m_temp, m_hum, etc.), last_send
+    while True:
+        # 1. Leitura dos MOCKs
+        bme = read_bme280()
+        luminosity = read_luminosity()
+        
+        # 2. Validação e Acúmulo no Buffer
+        if is_valid(temp, hum, press, luminosity):
+            m_temp.append(temp)
+            # ... acumulando outros dados
+        
+        # 3. Condição de Envio (A CADA 5 MINUTOS = 300 segundos)
+        if time.time() - last_send >= 300:
+            if len(m_temp) > 0:
+                # 4. Cálculo da Média
+                avg_temp = round(statistics.mean(m_temp), 2)
+                # ... cálculo de outras médias
+                
+                # 5. Inserção no Banco
+                try:
+                    conn = db_connect()
+                    cursor = conn.cursor()
+                    cursor.execute(""" INSERT INTO Raspdata (rcID, Temp, Humidity, Pressure, Light) ... """,
+                                   (rcID, avg_temp, avg_hum, avg_press, avg_lum))
+                    conn.commit()
+                    conn.close()
+                except Exception as e:
+                    logging.error(f"Erro ao inserir no banco: {e}")
+                
+                # 6. Reset
+                m_temp.clear()
+                # ... clear outros buffers
+                last_send = time.time()
+            
+        time.sleep(10) # Pausa de 10 segundos entre cada leitura
+
+Inicialização: A função principal inicializa as listas vazias (m_temp, m_hum, etc.) que servem como buffers para acumular leituras e a variável last_send (marcando o tempo da última inserção).
+
+Ciclo de Leitura: O while True garante que o script rode continuamente:
+
+Leitura e Validação: A cada iteração (loop), os mocks são chamados, e os valores são acumulados nos buffers apenas se passarem pelo filtro is_valid().
+
+Intervalo de Envio: O if time.time() - last_send >= 300: verifica se 5 minutos (300 segundos) se passaram desde o último envio.
+
+Agregação: Se for hora de enviar, a média aritmética (statistics.mean) de cada buffer é calculada e arredondada.
+
+Transação DB: É feita uma nova conexão, a query INSERT é executada com os valores médios, a transação é confirmada (conn.commit()) e a conexão é fechada.
+
+Limpeza: Os buffers de dados são esvaziados (clear()) e last_send é atualizado para iniciar um novo ciclo de 5 minutos.
+
+time.sleep(10): Define o intervalo entre cada leitura individual do sensor em 10 segundos. 
+O script fará aproximadamente 30 leituras válidas antes de calcular a média e enviar os dados.
