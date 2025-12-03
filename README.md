@@ -42,6 +42,7 @@ Informações da Estação (Metadados)
 Após identificar ou criar o rcID no banco (raspclient), o script solicitará as seguintes informações de forma interativa:
 
 ############# AINDA FALTA UMA TRATATIVA PARA CASO O USUÁRIO INSIRA INFORMAÇÕES INADEQUADAS ################
+
 Nome da estação:
 Latitude:
 Longitude:
@@ -50,6 +51,7 @@ Altitude nível do mar (height_sea_level):
 Local/Endereço:
 Email do responsável:
 Contato:
+
 #############################################################################################################
 
 4. O que o Instalador Faz (Passos Principais)
