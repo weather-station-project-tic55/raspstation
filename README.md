@@ -4,6 +4,7 @@ Este projeto contém os scripts de instalação e coleta de dados (atualmente mo
 Estrutura do Repositório:
 
 O repositório é composto por três arquivos principais:
+
 installstation_v01.sh - Instalador principal. Configura o ambiente, I2C, dependências, identifica e cadastra a estação no DB, ativa o serviço de coleta.
 
 main_mocked_v01.py - Python Script de coleta de dados. Contém a lógica de leitura (MOCK), agregação (média a cada 5 minutos) e envio para o banco.
