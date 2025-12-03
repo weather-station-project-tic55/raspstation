@@ -1,0 +1,232 @@
+#!/bin/bash
+set -e
+# ===========================================
+# CONFIGURAÇÕES DE DIRETÓRIO
+# ===========================================
+STATION_DIR="/home/$SUDO_USER/.config/station"
+COLLECT_SCRIPT="main_mocked_v01.py" # Usando a versão mockada
+SERVICE="raspcollect.service"
+SERVICE_DIR="/etc/systemd/system/$SERVICE"
+# Diretório do script atual para encontrar os arquivos a serem copiados
+INSTALLER_DIR="$( cd "$(dirname "$0")" ; pwd -P )"
+
+echo "===== Instalador Raspberry Station v01 ====="
+
+# ===========================================
+# 1) INPUT DE CONEXÃO COM BANCO
+# ===========================================
+
+FIRST_ATTEMPT="true"
+
+while true; do
+
+    # Se NÃO for a primeira tentativa, exibe o erro
+    if [ "$FIRST_ATTEMPT" = "false" ]; 
+    then
+        echo " "
+        echo "❌ FALHA NA CONEXÃO!"
+        echo "Não foi possível conectar com os dados fornecidos."
+        echo "Por favor, verifique as informações e tente novamente."
+        echo " "
+    fi
+    
+    # --- Coleta de Dados ---
+    read -p "IP/Host do banco (ex: 192.168.100.10): " DB_HOST
+    read -p "Usuário do banco: " DB_USER
+    read -s -p "Senha do banco: " DB_PASS
+    echo
+    read -p "Nome do banco: " DB_NAME
+
+if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" --skip-column-names --skip-ssl -e ";" 2>/dev/null; 
+
+then 
+        echo " "
+        echo "✅ CONEXÃO ESTABELECIDA!"
+        break # Se for bem-sucedido (código 0), sai do loop
+fi
+# Se o teste falhou (o 'break' não foi executado), marca para mostrar o erro na próxima
+    FIRST_ATTEMPT="false"
+
+done
+
+sleep 3
+
+# ===========================================
+# INSTALAR DEPENDÊNCIAS DO SISTEMA
+# ===========================================
+echo "--- 1/10 Instalando dependências do sistema... ---"
+sudo apt update
+sudo apt install -y python3 python3-pip python3-smbus i2c-tools
+
+sleep 3
+
+# ===========================================
+#  HABILITAR I2C NO SISTEMA
+# ===========================================
+echo "--- 2/10 Ativando I2C... ---"
+sudo raspi-config nonint do_i2c 0
+
+sleep 3
+
+# ===========================================
+#  INSTALAR BIBLIOTECAS DO SENSOR
+# ===========================================
+echo "--- 3/10 Instalando bibliotecas Python do BME280... ---"
+sudo pip3 install --break-system-packages adafruit-circuitpython-bme280 adafruit-blinka pymysql
+
+sleep 3
+
+# ===========================================
+#  IDENTIFICAR MAC ADDRESS
+# ===========================================
+echo "--- 4/10 Identificando MAC Address ---"
+
+MAC=$(cat /sys/class/net/eth0/address | tr -d '\n')
+MAC=$(echo $MAC | tr -d '\n')
+
+if [ -z "$MAC" ]; then
+    echo " MAC Address não detectado."
+fi
+echo "MAC detectado: $MAC"
+
+sleep 3
+
+# ===========================================
+#  CONSULTAR/CRIAR RCID NO BANCO
+# ===========================================
+echo "--- 5/10 Consultando/Criando MAC no banco... ---"
+
+# Função auxiliar para executar comandos SQL
+SQL_COMMAND() {
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" \
+    --skip-column-names --batch --skip-ssl \
+    -e "$1" 2>/dev/null
+}
+# Consulta o rcID
+RCID=$(SQL_COMMAND "SELECT rcID FROM raspclient WHERE mac='$MAC' LIMIT 1;")
+
+if [ -z "$RCID" ]; then
+    echo ">>> MAC não encontrado. Criando novo registro..."
+
+    # Insere o novo MAC
+    SQL_COMMAND "INSERT INTO raspclient (mac) VALUES ('$MAC');"
+
+    # Recupera o rcID recém-criado
+    RCID=$(SQL_COMMAND "SELECT rcID FROM raspclient WHERE mac='$MAC' LIMIT 1;")
+
+    if [ -z "$RCID" ]; then
+        echo "Não foi possível criar ou recuperar o rcID após a inserção."
+        exit 1
+    fi
+    echo ">>> Novo rcID criado: $RCID"
+else
+    echo ">>> MAC já existe. rcID encontrado: $RCID"
+fi
+
+sleep 3
+
+# ===========================================
+#  CRIAR DIRETÓRIOS E ARQUIVO RCID.TXT
+# ===========================================
+echo "--- 6/10 Criando diretórios e salvando rcID... ---"
+
+mkdir -p "$STATION_DIR"
+
+# Salvar rcID no diretório ~/.config/station/rcid.txt
+echo "$RCID" > "$STATION_DIR/rcid.txt"
+echo "rcID ($RCID) salvo em $STATION_DIR/rcid.txt"
+
+sleep 3
+
+# ===========================================
+# INPUT E UPDATE DA raspclient
+# ===========================================
+echo "--- 7/10 Informações adicionais da estação (UPDATE)... ---"
+
+read -p "Nome da estação: " NAME
+read -p "Latitude: " LAT
+read -p "Longitude: " LNG
+read -p "Altitude (height): " HEIGHT
+read -p "Altitude nível do mar (height_sea_level): " HSL
+read -p "Local/Endereço: " LOCATION
+read -p "Email do responsável: " EMAIL
+read -p "Contato: " CONTACT
+
+# Cria o comando de UPDATE, escapando aspas simples para segurança
+UPDATE_QUERY="UPDATE raspclient SET \
+name='$(echo "$NAME" | sed "s/'/''/g")', \
+latitude='$LAT', longitude='$LNG', \
+height='$HEIGHT', height_sea_level='$HSL', \
+local='$(echo "$LOCATION" | sed "s/'/''/g")', \
+email='$EMAIL', contact='$CONTACT' \
+WHERE rcID='$RCID';"
+
+# Executa o UPDATE
+SQL_COMMAND "$UPDATE_QUERY"
+
+echo ">>> Dados atualizados no banco com sucesso para o rcID: $RCID."
+
+sleep 3
+
+# ===========================================
+#  COPIAR SCRIPTS E SERVIÇO
+# ===========================================
+echo "--- 8/10 Copiando scripts e serviço... ---"
+
+# Copia o script de coleta
+cp "$INSTALLER_DIR/$COLLECT_SCRIPT" "$STATION_DIR/$COLLECT_SCRIPT"
+# Permissão full para o script
+chmod 777 "$STATION_DIR/$COLLECT_SCRIPT"
+echo "Script de coleta copiado para $STATION_DIR/$COLLECT_SCRIPT e permissão full concedida."
+
+sleep 3
+
+# Copia o arquivo de serviço
+sudo cp "$INSTALLER_DIR/$SERVICE" /etc/systemd/system/"$SERVICE"
+# Permissão full para o serviço
+sudo chmod 777 /etc/systemd/system/"$SERVICE"
+echo "Arquivo de serviço copiado para /etc/systemd/system/$SERVICE e permissão full concedida."
+
+sleep 3
+
+# ===========================================
+#  INJETAR CONFIGURAÇÃO DO BANCO NO PYTHON
+# ===========================================
+echo "--- 9/10 Injetando credenciais no script de coleta... ---"
+
+# Caminho absoluto do script copiado que precisa ser editado (no diretório do usuário)
+SCRIPT_TO_EDIT="$STATION_DIR/$COLLECT_SCRIPT"
+
+# --- Injeção de Variáveis ---
+# O comando sed busca o placeholder literal (e as aspas) e substitui pelo valor validado.
+
+# 1. Substitui o Host/IP
+sudo sed -i "s|DB_HOST = \"DB_HOST_PLACEHOLDER\"|DB_HOST = \"$DB_HOST\"|g" "$SCRIPT_TO_EDIT"
+
+# 2. Substitui o Usuário
+sudo sed -i "s|DB_USER = \"DB_USER_PLACEHOLDER\"|DB_USER = \"$DB_USER\"|g" "$SCRIPT_TO_EDIT"
+
+# 3. Substitui a Senha
+sudo sed -i "s|DB_PASS = \"DB_PASS_PLACEHOLDER\"|DB_PASS = \"$DB_PASS\"|g" "$SCRIPT_TO_EDIT"
+
+# 4. Substitui o Nome do Banco
+sudo sed -i "s|DB_NAME = \"DB_NAME_PLACEHOLDER\"|DB_NAME = \"$DB_NAME\"|g" "$SCRIPT_TO_EDIT"
+
+# GARANTE QUE O SCRIPT PERTENÇA AO USUÁRIO FINAL
+sudo chown "$SUDO_USER:$SUDO_USER" "$SCRIPT_TO_EDIT"
+
+echo "Configurações do banco injetadas em $SCRIPT_TO_EDIT."
+
+sleep 3
+# ===========================================
+#  RECARREGAR SYSTEMD E ATIVAR SERVIÇO
+# ===========================================
+echo "--- 10/10 Ativando serviço de coleta... ---"
+sudo sed -i "s|INSTALL_USER|$SUDO_USER|g" "$SERVICE_DIR"
+sudo systemctl daemon-reload
+sudo systemctl enable "$SERVICE"
+sudo systemctl restart "$SERVICE"
+
+echo "===== INSTALAÇÃO FINALIZADA COM SUCESSO! ====="
+echo "rcID instalado: $RCID"
+echo "Para verificar o status do serviço, execute: sudo systemctl status $SERVICE"
