@@ -12,7 +12,9 @@ main_mocked_v01.py - Python Script de coleta de dados. Contém a lógica de leit
 raspcollect.service - Serviço Systemd. Garante que o script de coleta seja executado em background e reinicie automaticamente em caso de falha.
 
 Requisitos
-Hardware: Raspberry Pi (testado no Raspberry Pi OS).
+Hardware:
+
+Raspberry Pi (testado no Raspberry Pi OS).
 Sensor: BME280 e sensor de luminosidade (necessita de I2C).
 Acesso: Usuário com permissão sudo(linux).
 Banco de Dados: Um servidor MySQL ou MariaDB acessível pela Raspberry Pi.
