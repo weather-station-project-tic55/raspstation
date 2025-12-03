@@ -15,20 +15,27 @@ Requisitos
 Hardware:
 
 Raspberry Pi (testado no Raspberry Pi OS).
+
 Sensor: BME280 e sensor de luminosidade (necessita de I2C).
+
 Acesso: Usuário com permissão sudo(linux).
+
 Banco de Dados: Um servidor MySQL ou MariaDB acessível pela Raspberry Pi.
+
 Tabelas: A base de dados deve conter as tabelas raspclient e Raspdata com a estrutura necessária.
 
 Processo de Instalação
+
 O instalador installstation_v01.sh automatiza todo o processo, desde a instalação de dependências até a ativação do serviço.
 
 1- Executar o Instalador
+
 O script deve ser executado com permissões de sudo para instalar dependências, configurar o I2C e criar o serviço no sistema.
 
 comando: sudo ./installstation_v01.sh
 
 3. Interação com o Instalador
+   
 O script solicitará as seguintes informações de forma interativa para a conexão com o Banco de Dados:
 
 IP/Host do banco:
@@ -42,6 +49,7 @@ Nome do banco:
 O instalador possui um loop de validação que testa a conexão do MySQL/MariaDB. Ele só prosseguirá se a conexão for bem-sucedida.
 
 Informações da Estação (Metadados)
+
 Após identificar ou criar o rcID no banco (raspclient), o script solicitará as seguintes informações de forma interativa:
 
 ############# AINDA FALTA UMA TRATATIVA PARA CASO O USUÁRIO INSIRA INFORMAÇÕES INADEQUADAS ################
@@ -58,6 +66,7 @@ Contato:
 #############################################################################################################
 
 4. O que o Instalador Faz (Passos Principais)
+
 Instala Dependências: python3, pip, i2c-tools e bibliotecas Python (adafruit-bme280, adafruit-blinka, pymysql).
 
 Configura I2C: Ativa o protocolo I2C via raspi-config.
@@ -77,6 +86,7 @@ Injeta Credenciais: Edita o script main_mocked_v01.py para injetar as credenciai
 Instala e Ativa o Serviço: Copia o arquivo raspcollect.service para o systemd, recarrega e inicia o serviço.
 
 🔎 Verificação do Status
+
 Após a instalação, você pode verificar se o serviço de coleta está rodando corretamente usando o comando:
 
 sudo systemctl status raspcollect.service
