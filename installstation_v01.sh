@@ -10,7 +10,7 @@ SERVICE_DIR="/etc/systemd/system/$SERVICE"
 # Diretório do script atual para encontrar os arquivos a serem copiados
 INSTALLER_DIR="$( cd "$(dirname "$0")" ; pwd -P )"
 
-echo "===== Instalador Raspberry Station v01 ====="
+echo "===== Instalador Raspberry Station v02 ====="
 
 # ===========================================
 # 1) INPUT DE CONEXÃO COM BANCO
@@ -100,7 +100,7 @@ echo "--- 5/10 Consultando/Criando MAC no banco... ---"
 SQL_COMMAND() {
     mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" \
     --skip-column-names --batch --skip-ssl \
-    -e "$1" 2>/dev/null
+    -e "$1"
 }
 # Consulta o rcID
 RCID=$(SQL_COMMAND "SELECT rcID FROM raspclient WHERE mac='$MAC' LIMIT 1;")
@@ -141,18 +141,43 @@ sleep 3
 # ===========================================
 # INPUT E UPDATE DA raspclient
 # ===========================================
-echo "--- 7/10 Informações adicionais da estação (UPDATE)... ---"
+echo "--- 7/10 Informações adicionais da estação... ---"
+
+FIRST_ATTEMPT2="true"
+
+while true; do
+
+ # Se NÃO for a primeira tentativa, exibe o erro
+if [ "$FIRST_ATTEMPT2" = "false" ]; 
+
+ then
+ echo " "
+ echo "❌ FALHA NO INSERT"
+ echo "Não foi possível cadastrar a estação com os dados fornecidos."
+ echo "Por favor, verifique as informações inseridas estão de acordo com o previsto:"
+ echo " "
+ echo "Nome da estação - SOMENTE LETRAS E CARACTERES"
+ echo "Latitude  - SOMENTE NÚMEROS E (.) COMO SEPARADOR"
+ echo "Longitude - SOMENTE NÚMEROS E (.) COMO SEPARADOR"
+ echo "Altitude  - SOMENTE NÚMEROS E (.) COMO SEPARADOR"
+ echo "Altitude com relação ao nível do mar - SOMENTE NÚMEROS E (.) COMO SEPARADOR"
+ echo "Local/Endereço - LETRAS, NÚMEROS E CARACTERES"
+ echo "Email do responsável - LETRAS, NÚMEROS E CARACTERES"
+ echo "Contato - NÚMEROS E CARACTERES"
+ echo "Evite caracteres como '(''' '"' "--" "\0"  "<"  ">")'
+ echo " "
+
+ fi
 
 read -p "Nome da estação: " NAME
 read -p "Latitude: " LAT
 read -p "Longitude: " LNG
 read -p "Altitude (height): " HEIGHT
-read -p "Altitude nível do mar (height_sea_level): " HSL
+read -p "Altitude com relação ao nível do mar (height_sea_level): " HSL
 read -p "Local/Endereço: " LOCATION
 read -p "Email do responsável: " EMAIL
 read -p "Contato: " CONTACT
 
-# Cria o comando de UPDATE, escapando aspas simples para segurança
 UPDATE_QUERY="UPDATE raspclient SET \
 name='$(echo "$NAME" | sed "s/'/''/g")', \
 latitude='$LAT', longitude='$LNG', \
@@ -161,12 +186,21 @@ local='$(echo "$LOCATION" | sed "s/'/''/g")', \
 email='$EMAIL', contact='$CONTACT' \
 WHERE rcID='$RCID';"
 
-# Executa o UPDATE
-SQL_COMMAND "$UPDATE_QUERY"
+# Executa o comando de update
+if (SQL_COMMAND "$UPDATE_QUERY"); 
+    then 
+ echo " "
+ echo "✅ ESTAÇÃO CADASTRADA!"
+ break # Sai do loop
+    fi
+    # Se o 'if' acima falhar é sinal que o insert no banco deu errado
 
-echo ">>> Dados atualizados no banco com sucesso para o rcID: $RCID."
+    FIRST_ATTEMPT2="false"
+done
 
 sleep 3
+
+echo ">>> Dados atualizados no banco com sucesso para o rcID: $RCID."
 
 # ===========================================
 #  COPIAR SCRIPTS E SERVIÇO
