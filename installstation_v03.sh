@@ -4,16 +4,108 @@ set -e
 # CONFIGURAÇÕES DE DIRETÓRIO
 # ===========================================
 STATION_DIR="/home/$SUDO_USER/.config/station"
-COLLECT_SCRIPT="main_mocked_v01.py" # Usando a versão mockada
+COLLECT_SCRIPT="sensor_v01.py"
 SERVICE="raspcollect.service"
 SERVICE_DIR="/etc/systemd/system/$SERVICE"
-# Diretório do script atual para encontrar os arquivos a serem copiados
 INSTALLER_DIR="$( cd "$(dirname "$0")" ; pwd -P )"
 
-echo "===== Instalador Raspberry Station v02 ====="
+echo "===== Instalador Raspberry Station v03 ====="
+echo " "
+# ===========================================
+# FUNÇÃO DE DESINSTALAÇÃO
+# ===========================================
+uninstallstation() {
+    echo "--- INICIANDO DESINSTALAÇÃO DO RASPBERRY STATION ---"
+
+    # 1. Parar e desabilitar o serviço
+    if  sudo systemctl is-active --quiet "$SERVICE"; then
+        echo "1/3 Parando o serviço $SERVICE..."
+        sudo systemctl stop "$SERVICE"
+    fi
+    if  sudo systemctl is-enabled --quiet "$SERVICE"; then
+        echo "2/3 Desabilitando o serviço $SERVICE..."
+        sudo systemctl disable "$SERVICE"
+    fi
+
+    # 2. Remover arquivos de serviço
+    if [ -f "$SERVICE_DIR" ]; then
+        echo "3/3 Removendo arquivo de serviço do sistema ($SERVICE_DIR)..."
+        sudo rm -rf "$SERVICE_DIR"
+        sudo systemctl daemon-reload
+    fi
+    
+    # 3. Remover diretório de instalação do usuário
+    if [ -d "$STATION_DIR" ]; then
+        echo "Removendo diretório de scripts e configuração ($STATION_DIR)..."
+        sudo rm -rf "$STATION_DIR"
+    fi
+
+    # 4. Remover registro da raspclient
+
+
+    echo " "
+    echo "✅ DESINSTALAÇÃO CONCLUÍDA COM SUCESSO!"
+    exit 0
+}
 
 # ===========================================
-# 1) INPUT DE CONEXÃO COM BANCO
+# MENU DE OPÇÕES INICIAL
+# ===========================================
+echo "O que você deseja fazer?"
+echo " "
+echo "1) Instalar o Raspberry Station"
+echo "2) Desinstalar (Remover serviço e arquivos)"
+echo " "
+read -p "Escolha uma opção (1 ou 2): " OPTION
+
+case $OPTION in
+    1)
+        echo "Iniciando a instalação..."
+        ;;
+    2)
+        read -r -p "Tem certeza que deseja desinstalar o Raspberry Station? (S/n) " CONFIRM
+        if [[ "$CONFIRM" =~ ^[Ss]$ ]]; then
+            uninstallstation
+        else
+            echo "Desinstalação cancelada. Saindo."
+            exit 0
+        fi
+        ;;
+    *)
+        echo "Opção inválida. Saindo..."
+        exit 1
+        ;;
+esac
+
+sleep 2
+
+# ===========================================
+# INSTALAR DEPENDÊNCIAS DO SISTEMA
+# ===========================================
+echo "--- 1/10 Instalando dependências do sistema... ---"
+sudo apt update
+sudo apt install -y python3 python3-pip python3-smbus i2c-tools mariadb-client
+
+sleep 3
+
+# ===========================================
+#  HABILITAR I2C NO SISTEMA
+# ===========================================
+echo "--- 2/10 Ativando I2C... ---"
+sudo raspi-config nonint do_i2c 0
+
+sleep 3
+
+# ===========================================
+#  INSTALAR BIBLIOTECAS DO SENSOR
+# ===========================================
+echo "--- 3/10 Instalando bibliotecas Python do BME280... ---"
+sudo pip3 install --break-system-packages adafruit-circuitpython-bme280 adafruit-blinka pymysql
+
+sleep 3
+
+# ===========================================
+#  INPUT DE CONEXÃO COM BANCO
 # ===========================================
 
 FIRST_ATTEMPT="true"
@@ -31,6 +123,8 @@ while true; do
     fi
     
     # --- Coleta de Dados ---
+    echo "Insira as informações de conexão com o banco:"
+    echo " "
     read -p "IP/Host do banco (ex: 192.168.100.10): " DB_HOST
     read -p "Usuário do banco: " DB_USER
     read -s -p "Senha do banco: " DB_PASS
@@ -52,49 +146,28 @@ done
 sleep 3
 
 # ===========================================
-# INSTALAR DEPENDÊNCIAS DO SISTEMA
+#  IDENTIFICAR SERIAL DA CPU DA RASP
 # ===========================================
-echo "--- 1/10 Instalando dependências do sistema... ---"
-sudo apt update
-sudo apt install -y python3 python3-pip python3-smbus i2c-tools
+echo "--- 4/10 Identificando ID da rasp (serial da cpu) ---"
 
-sleep 3
+# Tenta extrair o Serial da CPU do arquivo /proc/cpuinfo
+# O serial é o identificador único e permanente da Raspberry Pi.
+RCID_SERIAL=$(awk '/Serial/ {print $3}' /proc/cpuinfo)
 
-# ===========================================
-#  HABILITAR I2C NO SISTEMA
-# ===========================================
-echo "--- 2/10 Ativando I2C... ---"
-sudo raspi-config nonint do_i2c 0
-
-sleep 3
-
-# ===========================================
-#  INSTALAR BIBLIOTECAS DO SENSOR
-# ===========================================
-echo "--- 3/10 Instalando bibliotecas Python do BME280... ---"
-sudo pip3 install --break-system-packages adafruit-circuitpython-bme280 adafruit-blinka pymysql
-
-sleep 3
-
-# ===========================================
-#  IDENTIFICAR MAC ADDRESS
-# ===========================================
-echo "--- 4/10 Identificando MAC Address ---"
-
-MAC=$(cat /sys/class/net/eth0/address | tr -d '\n')
-MAC=$(echo $MAC | tr -d '\n')
-
-if [ -z "$MAC" ]; then
-    echo " MAC Address não detectado."
+if [ -z "$RCID_SERIAL" ]; then
+    echo "ERRO: Não foi possível obter o Número de Série da CPU."
+    echo "Verifique se o arquivo /proc/cpuinfo está disponível ou se o formato é o esperado."
+    exit 1
 fi
-echo "MAC detectado: $MAC"
+
+echo "Serial da CPU detectado: $RCID_SERIAL"
 
 sleep 3
 
 # ===========================================
 #  CONSULTAR/CRIAR RCID NO BANCO
 # ===========================================
-echo "--- 5/10 Consultando/Criando MAC no banco... ---"
+echo "--- 5/10 Consultando/Criando Serial no banco... ---"
 
 # Função auxiliar para executar comandos SQL
 SQL_COMMAND() {
@@ -103,16 +176,16 @@ SQL_COMMAND() {
     -e "$1"
 }
 # Consulta o rcID
-RCID=$(SQL_COMMAND "SELECT rcID FROM raspclient WHERE mac='$MAC' LIMIT 1;")
+RCID=$(SQL_COMMAND "SELECT rcID FROM raspclient WHERE serial='$RCID_SERIAL' LIMIT 1;")
 
 if [ -z "$RCID" ]; then
-    echo ">>> MAC não encontrado. Criando novo registro..."
+    echo ">>> Serial não encontrado no banco. Criando novo registro..."
 
     # Insere o novo MAC
-    SQL_COMMAND "INSERT INTO raspclient (mac) VALUES ('$MAC');"
+    SQL_COMMAND "INSERT INTO raspclient (serial) VALUES ('$RCID_SERIAL');"
 
     # Recupera o rcID recém-criado
-    RCID=$(SQL_COMMAND "SELECT rcID FROM raspclient WHERE mac='$MAC' LIMIT 1;")
+    RCID=$(SQL_COMMAND "SELECT rcID FROM raspclient WHERE serial='$RCID_SERIAL' LIMIT 1;")
 
     if [ -z "$RCID" ]; then
         echo "Não foi possível criar ou recuperar o rcID após a inserção."
@@ -120,7 +193,7 @@ if [ -z "$RCID" ]; then
     fi
     echo ">>> Novo rcID criado: $RCID"
 else
-    echo ">>> MAC já existe. rcID encontrado: $RCID"
+    echo ">>> Serial já existe. rcID encontrado: $RCID"
 fi
 
 sleep 3
@@ -154,6 +227,7 @@ if [ "$FIRST_ATTEMPT2" = "false" ];
  echo " "
  echo "❌ FALHA NO INSERT"
  echo "Não foi possível cadastrar a estação com os dados fornecidos."
+ echo " "
  echo "Por favor, verifique as informações inseridas estão de acordo com o previsto:"
  echo " "
  echo "Nome da estação - SOMENTE LETRAS E CARACTERES"
@@ -172,8 +246,8 @@ if [ "$FIRST_ATTEMPT2" = "false" ];
 read -p "Nome da estação: " NAME
 read -p "Latitude: " LAT
 read -p "Longitude: " LNG
-read -p "Altitude (height): " HEIGHT
-read -p "Altitude com relação ao nível do mar (height_sea_level): " HSL
+read -p "Altitude (metros): " HEIGHT
+read -p "Altitude com relação ao nível do mar (metros): " HSL
 read -p "Local/Endereço: " LOCATION
 read -p "Email do responsável: " EMAIL
 read -p "Contato: " CONTACT
