@@ -84,7 +84,7 @@ sleep 2
 # ===========================================
 echo "--- 1/10 Instalando dependências do sistema... ---"
 sudo apt update
-sudo apt install -y python3 python3-pip python3-smbus i2c-tools mariadb-client
+sudo apt install -y python3 python3-pip python3-smbus i2c-tools mariadb-client 
 
 sleep 3
 
@@ -100,7 +100,7 @@ sleep 3
 #  INSTALAR BIBLIOTECAS DO SENSOR
 # ===========================================
 echo "--- 3/10 Instalando bibliotecas Python do BME280... ---"
-sudo pip3 install --break-system-packages adafruit-circuitpython-bme280 adafruit-blinka pymysql
+sudo pip3 install RPi.bme280 --break-system-packages pymysql
 
 sleep 3
 
