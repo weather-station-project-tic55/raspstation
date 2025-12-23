@@ -12,10 +12,10 @@ Esta é a seção mais importante, pois define como o programa deve ser executad
 
 [Service]
 User=INSTALL_USER
-ExecStart=/usr/bin/python3 /home/INSTALL_USER/.config/station/main_mocked_v01.py
+ExecStart=/usr/bin/python3 /home/INSTALL_USER/.config/station/sensorscript.py
 Restart=always
 RestartSec=5
-Substituição do Usuário: O instalador (installstation_v01.sh) é responsável por substituir a string INSTALL_USER pelo usuário real da Raspberry Pi (ex: pi), garantindo o acesso aos arquivos no diretório home do usuário.
+Substituição do Usuário: O instalador (installstation_v04.sh) é responsável por substituir a string INSTALL_USER pelo usuário real da Raspberry Pi (ex: pi), garantindo o acesso aos arquivos no diretório home do usuário.
 
 Controle de Estabilidade: A combinação de Restart=always e RestartSec=5 é uma prática padrão para serviços de coleta, assegurando a máxima disponibilidade. Se o script sair por qualquer motivo (erro de Python, exceção não tratada), ele tentará rodar novamente após 5 segundos.
 
