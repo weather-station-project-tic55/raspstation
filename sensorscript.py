@@ -13,25 +13,29 @@ import bme280
 # ============================================
 # LEITURA DO RCID (ID DA ESTACAO)
 # ============================================
-# def get_rcid():
-  #  try:
-   #     path = os.path.expanduser("~/.config/station/rcid.txt") 
-    #    with open(path, "r") as f:
-     #       return int(f.read().strip())
-    #except Exception as e:
-     #   print(f"Erro ao ler rcID: {e}")
-      #  return None
-        
-
-rcID = 1
-
+def get_rcid():
+    try:
+        path = os.path.expanduser("~/.config/station/rcid.txt") 
+        with open(path, "r") as f:
+            return int(f.read().strip())
+    except Exception as e:
+        print(f"Erro ao ler rcID: {e}")
+        return None
+    
 # ============================================
-# PARÂMETROS DO SENSOR
+# PARÂMETROS DOS SENSORES
 # ============================================
-port = 1
-address = 0x76
-bus = smbus2.SMBus(port)
-bme280.load_calibration_params(bus, address)
+
+# I2C
+bus = smbus2.SMBus(1)
+
+# BME280
+bme280_addr = 0x76
+bme280.load_calibration_params(bus, bme280_addr)
+
+# BH1750
+bh1750_addr = 0x23
+bh1750_mode = 0x10 
 
 # ============================================
 # FUNÇÃO DE LEITURA DO BME280
@@ -39,7 +43,7 @@ bme280.load_calibration_params(bus, address)
 def read_bme280():
     try:
         # A leitura ocorre aqui
-        data = bme280.sample(bus, address) 
+        data = bme280.sample(bus, bme280_addr) 
         temp = data.temperature
         hum = data.humidity
         press = data.pressure
@@ -47,16 +51,31 @@ def read_bme280():
     except Exception as e:
         logging.error(f"Erro na leitura do BME280: {e}")
         return None
-        
+
 # ============================================
-# FILTRO DE VALORES INVALIDOS (Luminosidade removida)
+# FUNÇÃO DE LEITURA DO BH1750
 # ============================================
-def is_valid(temp, hum, press):
+def read_bh1750():
+    try:
+        data = bus.read_i2c_block_data(bh1750_addr, bh1750_mode, 2)
+        raw = (data[0] << 8) | data[1]
+        lux = raw / 1.2
+        return lux
+    except Exception as e:
+        logging.error(f"Erro na leitura do BH1750: {e}")
+        return None
+    
+# ============================================
+# FILTRO DE VALORES INVALIDOS
+# ============================================
+def is_valid(temp, hum, press, lux):
     if temp is None or temp < -40 or temp > 85: # Limites técnicos do sensor
         return False
     if hum is None or hum < 0 or hum > 100:
         return False
     if press is None or press < 800 or press > 1100: # Limites razoáveis
+        return False
+    if lux is None or lux <0:
         return False
     return True
 
@@ -64,47 +83,58 @@ def is_valid(temp, hum, press):
 # CONEXAO COM O BANCO MARIADB
 # ============================================
 # PLACEHOLDERS SERÃO SUBSTITUÍDOS PELO INSTALADOR
-#DB_HOST = "DB_HOST_PLACEHOLDER"
-#DB_USER = "DB_USER_PLACEHOLDER"
-#DB_PASS = "DB_PASS_PLACEHOLDER"
-#DB_NAME = "DB_NAME_PLACEHOLDER"
+DB_HOST = "DB_HOST_PLACEHOLDER"
+DB_USER = "DB_USER_PLACEHOLDER"
+DB_PASS = "DB_PASS_PLACEHOLDER"
+DB_NAME = "DB_NAME_PLACEHOLDER"
 
 def db_connect():
     return pymysql.connect(
-        host='192.168.100.3',
-        user='root',
-        password='ncssp',
-        database='weatherdb'
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASS,
+        database=DB_NAME
     )
     
 # ============================================
 # LOOP PRINCIPAL DE COLETA
 # ============================================
 def main():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    logging.info("Iniciando coleta real...")
 
+    rcID = get_rcid()
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.info("Iniciando coleta...")
+
+    if rcID is None:
+        logging.error("rcID not found")
+        return
+        
     m_temp = []
     m_hum = []
     m_press = []
+    m_lux = []
 
     last_send = time.time()
 
     while True:
-        # ----- LEITURA REAL -----
+        # ----- LEITURA -----
         bme = read_bme280()
+        lux = read_bh1750()
 
         if bme is not None:
             temp, hum, press = bme
         else:
             temp, hum, press = None, None, None
+        
+        
 
         # ----- Validacao -----
        
-        if is_valid(temp, hum, press):
+        if is_valid(temp, hum, press,lux):
             m_temp.append(temp)
             m_hum.append(hum)
             m_press.append(press)
+            m_lux.append(lux)
           
 
         # ----- A CADA 5 MINUTOS -----
@@ -114,6 +144,7 @@ def main():
                 avg_temp = round(statistics.mean(m_temp), 2)
                 avg_hum = round(statistics.mean(m_hum), 2)
                 avg_press = round(statistics.mean(m_press), 2)
+                avg_lux = round(statistics.mean(m_lux), 2)
 
                 try:
                     conn = db_connect()
@@ -121,16 +152,16 @@ def main():
                 
                     cursor.execute(
                         """
-                        INSERT INTO Raspdata (rcID, Temp, Humidity, Pressure)
-                        VALUES (%s, %s, %s, %s)
+                        INSERT INTO Raspdata (rcID, Temp, Humidity, Pressure, Lux)
+                        VALUES (%s, %s, %s, %s, %s)
                         """,
-                        (rcID, avg_temp, avg_hum, avg_press)
+                        (rcID, avg_temp, avg_hum, avg_press, avg_lux)
                     )
                     conn.commit()
                     conn.close()
 
                     logging.info(
-                        f"Dados registrados: T={avg_temp} H={avg_hum} P={avg_press}"
+                        f"Dados registrados: T={avg_temp} H={avg_hum} P={avg_press} L={avg_lux}"
                     )
 
                 except Exception as e:
@@ -143,7 +174,7 @@ def main():
             m_temp.clear()
             m_hum.clear()
             m_press.clear()
-            # m_lum.clear() removida
+            m_lux.clear()
             last_send = time.time()
 
         time.sleep(10)
