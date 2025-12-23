@@ -1,10 +1,10 @@
 [Unit]
-Description=Collect service of raspberry
+Description=Collect service of sensors
 After=network-online.target
 
 [Service]
 User=INSTALL_USER
-ExecStart=/usr/bin/python3 /home/INSTALL_USER/.config/station/main_mocked_v01.py
+ExecStart=/usr/bin/python3 /home/INSTALL_USER/.config/station/sensorscript.py
 Restart=always
 RestartSec=5
 
