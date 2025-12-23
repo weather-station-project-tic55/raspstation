@@ -4,12 +4,12 @@ set -e
 # CONFIGURAÇÕES DE DIRETÓRIO
 # ===========================================
 STATION_DIR="/home/$SUDO_USER/.config/station"
-COLLECT_SCRIPT="sensor_v01.py"
-SERVICE="raspcollect.service"
+COLLECT_SCRIPT="sensorscript.py"
+SERVICE="sensorcollect.service"
 SERVICE_DIR="/etc/systemd/system/$SERVICE"
 INSTALLER_DIR="$( cd "$(dirname "$0")" ; pwd -P )"
 
-echo "===== Instalador Raspberry Station v03 ====="
+echo "===== Instalador Raspberry Station v04 ====="
 echo " "
 # ===========================================
 # FUNÇÃO DE DESINSTALAÇÃO
@@ -82,25 +82,17 @@ sleep 2
 # ===========================================
 # INSTALAR DEPENDÊNCIAS DO SISTEMA
 # ===========================================
-echo "--- 1/10 Instalando dependências do sistema... ---"
+echo "--- 1/9 Instalando dependências do sistema... ---"
 sudo apt update
 sudo apt install -y python3 python3-pip python3-smbus i2c-tools mariadb-client 
-
+sudo pip3 install RPi.bme280 --break-system-packages pymysql
 sleep 3
 
 # ===========================================
 #  HABILITAR I2C NO SISTEMA
 # ===========================================
-echo "--- 2/10 Ativando I2C... ---"
+echo "--- 2/9 Ativando I2C... ---"
 sudo raspi-config nonint do_i2c 0
-
-sleep 3
-
-# ===========================================
-#  INSTALAR BIBLIOTECAS DO SENSOR
-# ===========================================
-echo "--- 3/10 Instalando bibliotecas Python do BME280... ---"
-sudo pip3 install RPi.bme280 --break-system-packages pymysql
 
 sleep 3
 
@@ -148,7 +140,7 @@ sleep 3
 # ===========================================
 #  IDENTIFICAR SERIAL DA CPU DA RASP
 # ===========================================
-echo "--- 4/10 Identificando ID da rasp (serial da cpu) ---"
+echo "--- 3/9 Identificando ID da rasp (serial da cpu) ---"
 
 # Tenta extrair o Serial da CPU do arquivo /proc/cpuinfo
 # O serial é o identificador único e permanente da Raspberry Pi.
@@ -167,7 +159,7 @@ sleep 3
 # ===========================================
 #  CONSULTAR/CRIAR RCID NO BANCO
 # ===========================================
-echo "--- 5/10 Consultando/Criando Serial no banco... ---"
+echo "--- 4/9 Consultando/Criando Serial no banco... ---"
 
 # Função auxiliar para executar comandos SQL
 SQL_COMMAND() {
@@ -201,7 +193,7 @@ sleep 3
 # ===========================================
 #  CRIAR DIRETÓRIOS E ARQUIVO RCID.TXT
 # ===========================================
-echo "--- 6/10 Criando diretórios e salvando rcID... ---"
+echo "--- 5/9 Criando diretórios e salvando rcID... ---"
 
 mkdir -p "$STATION_DIR"
 
@@ -214,7 +206,7 @@ sleep 3
 # ===========================================
 # INPUT E UPDATE DA raspclient
 # ===========================================
-echo "--- 7/10 Informações adicionais da estação... ---"
+echo "--- 6/9 Informações adicionais da estação... ---"
 
 FIRST_ATTEMPT2="true"
 
@@ -279,7 +271,7 @@ echo ">>> Dados atualizados no banco com sucesso para o rcID: $RCID."
 # ===========================================
 #  COPIAR SCRIPTS E SERVIÇO
 # ===========================================
-echo "--- 8/10 Copiando scripts e serviço... ---"
+echo "--- 7/9 Copiando scripts e serviço... ---"
 
 # Copia o script de coleta
 cp "$INSTALLER_DIR/$COLLECT_SCRIPT" "$STATION_DIR/$COLLECT_SCRIPT"
@@ -297,10 +289,10 @@ echo "Arquivo de serviço copiado para /etc/systemd/system/$SERVICE e permissão
 
 sleep 3
 
-# ===========================================
-#  INJETAR CONFIGURAÇÃO DO BANCO NO PYTHON
-# ===========================================
-echo "--- 9/10 Injetando credenciais no script de coleta... ---"
+# ==================================================
+#  INJETAR CONFIGURAÇÃO DO BANCO NO SCRIPT DE COLETA
+# ==================================================
+echo "--- 8/9 Injetando configurações no script de coleta... ---"
 
 # Caminho absoluto do script copiado que precisa ser editado (no diretório do usuário)
 SCRIPT_TO_EDIT="$STATION_DIR/$COLLECT_SCRIPT"
@@ -323,13 +315,13 @@ sudo sed -i "s|DB_NAME = \"DB_NAME_PLACEHOLDER\"|DB_NAME = \"$DB_NAME\"|g" "$SCR
 # GARANTE QUE O SCRIPT PERTENÇA AO USUÁRIO FINAL
 sudo chown "$SUDO_USER:$SUDO_USER" "$SCRIPT_TO_EDIT"
 
-echo "Configurações do banco injetadas em $SCRIPT_TO_EDIT."
+echo "Configurações injetadas em $SCRIPT_TO_EDIT."
 
 sleep 3
 # ===========================================
 #  RECARREGAR SYSTEMD E ATIVAR SERVIÇO
 # ===========================================
-echo "--- 10/10 Ativando serviço de coleta... ---"
+echo "--- 9/9 Ativando serviço de coleta... ---"
 sudo sed -i "s|INSTALL_USER|$SUDO_USER|g" "$SERVICE_DIR"
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE"
