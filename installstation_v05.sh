@@ -11,6 +11,54 @@ INSTALLER_DIR="$( cd "$(dirname "$0")" ; pwd -P )"
 
 echo "===== Instalador Raspberry Station v04 ====="
 echo " "
+
+# ===========================================
+# FUNÇÃO: EDITAR CONFIGURAÇÕES DO BANCO
+# ===========================================
+edit_config() {
+SCRIPT_TO_EDIT="/home/$SUDO_USER/.config/station/sensorscript.py"
+echo "##### Configurações atuais #####"
+echo " "
+#### Exibe as configurações atuais ####
+grep "DB_HOST =" "$SCRIPT_TO_EDIT"
+grep "DB_USER =" "$SCRIPT_TO_EDIT"
+grep "DB_PASS =" "$SCRIPT_TO_EDIT"
+grep "DB_NAME =" "$SCRIPT_TO_EDIT"
+echo " " 
+
+    FIRST_ATTEMPT="true"
+    while true; do
+        if [ "$FIRST_ATTEMPT" = "false" ]; then
+            echo -e "\n❌ FALHA NA CONEXÃO! Verifique os dados e tente novamente.\n"
+        fi
+        
+        echo "##### Insira as novas configurações do Banco... #####"
+        read -p "Digite o IP/Host do banco: " NEW_DBHOST
+        read -p "Digite o usuário do banco: " NEW_DBUSER
+        read -s -p "Digite a senha do banco (ao digitar não será visível): " NEW_DBPASS
+        echo ""
+        read -p "Digite o nome do banco: " NEW_DBNAME
+
+        # Teste de conexão
+        if mysql -h "$NEW_DBHOST" -u "$NEW_DBUSER" -p"$NEW_DBPASS" "$NEW_DBNAME" --skip-column-names --skip-ssl -e ";" 2>/dev/null;
+        then 
+            echo -e "\n✅ CONEXÃO ESTABELECIDA!"
+            break 
+        fi
+        FIRST_ATTEMPT="false"
+    done
+
+    echo "##### Aplicando alterações... #####"
+    sudo systemctl stop "$SERVICE"
+
+    sudo sed -i "s|DB_HOST = .*|DB_HOST = \"$NEW_DBHOST\"|g" "$SCRIPT_TO_EDIT"
+    sudo sed -i "s|DB_USER = .*|DB_USER = \"$NEW_DBUSER\"|g" "$SCRIPT_TO_EDIT"
+    sudo sed -i "s|DB_PASS = .*|DB_PASS = \"$NEW_DBPASS\"|g" "$SCRIPT_TO_EDIT"
+    sudo sed -i "s|DB_NAME = .*|DB_NAME = \"$NEW_DBNAME\"|g" "$SCRIPT_TO_EDIT"
+
+    sudo systemctl start "$SERVICE"
+    echo "✅ Configurações atualizadas e serviço reiniciado!"
+}
 # ===========================================
 # FUNÇÃO DE DESINSTALAÇÃO
 # ===========================================
@@ -51,28 +99,28 @@ uninstallstation() {
 # ===========================================
 # MENU DE OPÇÕES INICIAL
 # ===========================================
-echo "O que você deseja fazer?"
+echo "===== Raspberry Station v04 ====="
+echo "1) Instalar"
+echo "2) Desinstalar"
+echo "3) Editar Configurações do Banco"
 echo " "
-echo "1) Instalar o Raspberry Station"
-echo "2) Desinstalar (Remover serviço e arquivos)"
-echo " "
-read -p "Escolha uma opção (1 ou 2): " OPTION
+read -p "Escolha uma opção: " OPTION
 
 case $OPTION in
     1)
         echo "Iniciando a instalação..."
+        # O código de instalação segue abaixo...
         ;;
     2)
-        read -r -p "Tem certeza que deseja desinstalar o Raspberry Station? (S/n) " CONFIRM
-        if [[ "$CONFIRM" =~ ^[Ss]$ ]]; then
-            uninstallstation
-        else
-            echo "Desinstalação cancelada. Saindo."
-            exit 0
-        fi
+        read -r -p "Confirmar desinstalação? (S/n) " CONFIRM
+        [[ "$CONFIRM" =~ ^[Ss]$ ]] && uninstallstation || exit 0
+        ;;
+    3)
+        edit_config
+        exit 0
         ;;
     *)
-        echo "Opção inválida. Saindo..."
+        echo "Opção inválida."
         exit 1
         ;;
 esac
@@ -286,6 +334,9 @@ sudo cp "$INSTALLER_DIR/$SERVICE" /etc/systemd/system/"$SERVICE"
 # Permissão full para o serviço
 sudo chmod 777 /etc/systemd/system/"$SERVICE"
 echo "Arquivo de serviço copiado para /etc/systemd/system/$SERVICE e permissão full concedida."
+
+# Permissão para o editor de configurações do banco
+sudo chmod 777 "$INSTALLER_DIR/dbconfig.sh"
 
 sleep 3
 
