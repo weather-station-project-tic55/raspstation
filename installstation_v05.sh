@@ -9,7 +9,7 @@ SERVICE="sensorcollect.service"
 SERVICE_DIR="/etc/systemd/system/$SERVICE"
 INSTALLER_DIR="$( cd "$(dirname "$0")" ; pwd -P )"
 
-echo "===== Instalador Raspberry Station v04 ====="
+echo "===== Instalador Raspberry Station v05 ====="
 echo " "
 
 # ===========================================
