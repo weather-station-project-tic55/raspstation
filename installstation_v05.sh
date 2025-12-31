@@ -102,7 +102,7 @@ uninstallstation() {
 echo "===== Raspberry Station v04 ====="
 echo "1) Instalar"
 echo "2) Desinstalar"
-echo "3) Editar Configurações do Banco"
+echo "3) Editar Configurações de conexão com o Banco"
 echo " "
 read -p "Escolha uma opção: " OPTION
 
