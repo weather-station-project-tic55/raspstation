@@ -5,9 +5,9 @@ Estrutura do Repositório:
 
 O repositório é composto por três arquivos principais:
 
-installstation_v01.sh - Instalador principal. Configura o ambiente, I2C, dependências, identifica e cadastra a estação no DB, ativa o serviço de coleta.
+installstation_v03.sh - Instalador principal. Configura o ambiente, I2C, dependências, identifica e cadastra a estação no DB, ativa o serviço de coleta.
 
-main_mocked_v01.py - Python Script de coleta de dados. Contém a lógica de leitura (MOCK), agregação (média a cada 5 minutos) e envio para o banco.
+sensor_v01.py - Python Script de coleta de dados. Contém a lógica de leitura, agregação (média a cada 5 minutos) e envio para o banco.
 
 raspcollect.service - Serviço Systemd. Garante que o script de coleta seja executado em background e reinicie automaticamente em caso de falha.
 
@@ -15,8 +15,6 @@ Requisitos
 Hardware:
 
 Raspberry Pi (testado no Raspberry Pi OS).
-
-Sensor: BME280 e sensor de luminosidade (necessita de I2C).
 
 Acesso: Usuário com permissão sudo(linux).
 
@@ -71,11 +69,11 @@ Instala Dependências: python3, pip, i2c-tools e bibliotecas Python (adafruit-bm
 
 Configura I2C: Ativa o protocolo I2C via raspi-config.
 
-Registro no DB: Detecta o MAC Address da interface eth0.
+Registro no DB: Detecta o serial da CPU da Rasp
 
-Se o MAC existe na tabela raspclient, recupera o rcID.
+Se o serial da CPU existe na tabela raspclient, recupera o rcID.
 
-Se o MAC não existe, cria um novo registro e obtém o novo rcID.
+Se o serial da CPU não existe, cria um novo registro e obtém o novo rcID.
 
 Configura Diretórios: Cria o diretório de trabalho ~/.config/station e salva o rcID no arquivo rcid.txt.
 
@@ -85,7 +83,7 @@ Injeta Credenciais: Edita o script main_mocked_v01.py para injetar as credenciai
 
 Instala e Ativa o Serviço: Copia o arquivo raspcollect.service para o systemd, recarrega e inicia o serviço.
 
-🔎 Verificação do Status
+Verificação do Status
 
 Após a instalação, você pode verificar se o serviço de coleta está rodando corretamente usando o comando:
 
