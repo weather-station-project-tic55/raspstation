@@ -9,6 +9,8 @@ import logging
 import board
 import smbus2
 import bme280
+import socket
+import uuid
 
 # ============================================
 # LEITURA DO RCID (ID DA ESTACAO)
@@ -108,7 +110,35 @@ def main():
     if rcID is None:
         logging.error("rcID not found")
         return
+# ============================================
+# CONSULTANDO O IP e MAC DA RASPBERRY
+# ============================================
+# --- BUSCA IP E MAC ATUAIS ---
+    mac_atual = "{:012X}".format(uuid.getnode())
+    
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    ip_atual = s.getsockname()[0]
+    s.close()
+
+    # --- COMPARA E ATUALIZA ---
+    try:
+        conn = db_connect()
+        cursor = conn.cursor()
+        cursor.execute("SELECT IP, MAC FROM raspclient WHERE rcID = %s", (rcID,))
+        db_data = cursor.fetchone()
+
+        # Se for diferente, atualiza
+        if not db_data or (ip_atual != db_data[0] or mac_atual != db_data[1]):
+            cursor.execute("UPDATE raspclient SET IP = %s, MAC = %s WHERE rcID = %s", 
+                          (ip_atual, mac_atual, rcID))
+            conn.commit()
+            logging.info(f"Rede atualizada: {ip_atual} | {mac_atual}")
         
+        conn.close()
+    except Exception as e:
+        logging.error(f"Erro na sincronização: {e}")
+
     m_temp = []
     m_hum = []
     m_press = []
