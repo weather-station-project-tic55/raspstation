@@ -334,9 +334,6 @@ sudo cp "$INSTALLER_DIR/$SERVICE" /etc/systemd/system/"$SERVICE"
 sudo chmod 777 /etc/systemd/system/"$SERVICE"
 echo "Arquivo de serviço copiado para /etc/systemd/system/$SERVICE e permissão full concedida."
 
-# Permissão para o editor de configurações do banco
-sudo chmod 777 "$INSTALLER_DIR/dbconfig.sh"
-
 sleep 3
 
 # ==================================================
