@@ -71,16 +71,15 @@ def read_bh1750():
 # FILTRO DE VALORES INVALIDOS
 # ============================================
 def is_valid(temp, hum, press, lux):
-    if temp is None or temp < -40 or temp > 85: # Limites técnicos do sensor
+    if temp is not None and (temp < -30 or temp > 70):
         return False
-    if hum is None or hum < 0 or hum > 100:
+    if hum is not None and (hum < 0 or hum > 100):
         return False
-    if press is None or press < 800 or press > 1100: # Limites razoáveis
+    if press is not None and (press < 800 or press > 1200):
         return False
-    if lux is None or lux <0:
+    if lux is not None and lux < 0:
         return False
     return True
-
 # ============================================
 # CONEXAO COM O BANCO MARIADB
 # ============================================
@@ -133,7 +132,7 @@ def main():
             cursor.execute("UPDATE raspclient SET IP = %s, MAC = %s WHERE rcID = %s", 
                           (ip_atual, mac_atual, rcID))
             conn.commit()
-            logging.info(f"Rede atualizada: {ip_atual} | {mac_atual}")
+            logging.info(f"IP e MAC da estação: {ip_atual} | {mac_atual}")
         
         conn.close()
     except Exception as e:
@@ -161,20 +160,26 @@ def main():
         # ----- Validacao -----
        
         if is_valid(temp, hum, press,lux):
-            m_temp.append(temp)
-            m_hum.append(hum)
-            m_press.append(press)
-            m_lux.append(lux)
+            if temp is not None:
+             m_temp.append(temp)
+            if hum is not None:
+             m_hum.append(hum)
+            if press is not None:
+             m_press.append(press)
+            if lux is not None:
+             m_lux.append(lux)
           
 
         # ----- A CADA 5 MINUTOS -----
         if time.time() - last_send >= 300:
-            if len(m_temp) > 0:
+            has_data = any([m_temp, m_hum, m_press, m_lux])
 
-                avg_temp = round(statistics.mean(m_temp), 2)
-                avg_hum = round(statistics.mean(m_hum), 2)
-                avg_press = round(statistics.mean(m_press), 2)
-                avg_lux = round(statistics.mean(m_lux), 2)
+            if has_data:
+
+                avg_temp = round(statistics.mean(m_temp), 2) if m_temp else None
+                avg_hum = round(statistics.mean(m_hum), 2) if m_hum else None
+                avg_press = round(statistics.mean(m_press), 2) if m_press else None
+                avg_lux = round(statistics.mean(m_lux), 2) if m_lux else None
 
                 try:
                     conn = db_connect()
