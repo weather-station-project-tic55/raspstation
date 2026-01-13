@@ -9,7 +9,7 @@ SERVICE="sensorcollect.service"
 SERVICE_DIR="/etc/systemd/system/$SERVICE"
 INSTALLER_DIR="$( cd "$(dirname "$0")" ; pwd -P )"
 
-echo "===== Instalador Raspberry Station v05 ====="
+echo "===== Instalador Raspberry Station v6 ====="
 echo " "
 # ===========================================
 # FUNÇÃO: EDITAR CONFIGURAÇÕES DO BANCO
@@ -132,7 +132,8 @@ sleep 2
 echo "--- 1/9 Instalando dependências do sistema... ---"
 sudo apt update
 sudo apt install -y python3 python3-pip python3-smbus i2c-tools mariadb-client 
-sudo pip3 install RPi.bme280 --break-system-packages pymysql
+sudo pip3 install RPi.bme280 --break-system-packages pymysql #BME280
+sudo apt install apache2-utils ### Biblioteca para criptografar a senha da estação
 sleep 3
 
 # ===========================================
@@ -288,15 +289,42 @@ read -p "Longitude: " LNG
 read -p "Altitude (metros): " HEIGHT
 read -p "Altitude com relação ao nível do mar (metros): " HSL
 read -p "Local/Endereço: " LOCATION
-read -p "Email do responsável: " EMAIL
 read -p "Contato: " CONTACT
+read -p "Email para login: " EMAIL
+read -s -p "Senha para login: " PASSLOGIN
+echo
+read -s -p "Confirme a senha: " PASSLOGIN2
+
+
+FIRST_ATTEMPT_LOGIN="true"
+
+if [ "$PASSLOGIN" != "$PASSLOGIN2" ]; then
+  echo "As senhas não conferem, tente novamente."
+  FIRST_ATTEMPT_LOGIN="false"
+fi
+
+while [ "$FIRST_ATTEMPT_LOGIN" = "false" ]; do
+read -s -p "Senha para login: " PASSLOGIN
+echo
+read -s -p "Confirme a senha: " PASSLOGIN2
+echo
+
+if [ "$PASSLOGIN" = "$PASSLOGIN2" ]; then
+  FIRST_ATTEMPT_LOGIN="true"
+else
+    echo "As senhas não conferem, tente novamente."
+fi  
+done
+
+HASHPASSWORD=$(htpasswd -nbBC 12 rasp "$PASSLOGIN" | cut -d ':' -f2) ### Criptografia da senha
 
 UPDATE_QUERY="UPDATE raspclient SET \
 name='$(echo "$NAME" | sed "s/'/''/g")', \
 latitude='$LAT', longitude='$LNG', \
 height='$HEIGHT', height_sea_level='$HSL', \
 local='$(echo "$LOCATION" | sed "s/'/''/g")', \
-email='$EMAIL', contact='$CONTACT' \
+email='$EMAIL', contact='$CONTACT', \
+password= '$HASHPASSWORD' \
 WHERE rcID='$RCID';"
 
 # Executa o comando de update
