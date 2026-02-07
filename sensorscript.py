@@ -12,6 +12,8 @@ import bme280
 import socket
 import uuid
 
+# sensorscript v2
+
 # ============================================
 # LEITURA DO RCID (ID DA ESTACAO)
 # ============================================
@@ -24,49 +26,60 @@ def get_rcid():
         print(f"Erro ao ler rcID: {e}")
         return None
     
-# ============================================
-# PARÂMETROS DOS SENSORES
-# ============================================
-
 # I2C
 bus = smbus2.SMBus(1)
 
-# BME280
-bme280_addr = 0x76
-bme280.load_calibration_params(bus, bme280_addr)
+# --- INICIALIZAÇÃO E TESTE DOS SENSORES ---
+HAS_BME280 = False
+HAS_BH1750 = False
 
-# BH1750
-bh1750_addr = 0x23
-bh1750_mode = 0x10 
+# Tenta inicializar BME280
+try:
+    bme280_addr = 0x76
+    bme280.load_calibration_params(bus, bme280_addr)
+    HAS_BME280 = True
+    print("[OK] BME280 detectado.")
+except Exception:
+    print("[AVISO] BME280 não encontrado.")
+
+# Tenta inicializar BH1750 (fazendo uma escrita simples de teste)
+try:
+    bh1750_addr = 0x23
+    bh1750_mode = 0x10 
+    bus.write_byte(bh1750_addr, bh1750_mode)
+    HAS_BH1750 = True
+    print("[OK] BH1750 detectado.")
+except Exception:
+    print("[AVISO] BH1750 não encontrado.")
+
+# Se nenhum sensor estiver conectado, encerra o script
+if not HAS_BME280 and not HAS_BH1750:
+    print("ERRO CRÍTICO: Nenhum sensor detectado no barramento I2C. Abortando...")
+    exit(1)
 
 # ============================================
-# FUNÇÃO DE LEITURA DO BME280
+# FUNÇÕES DE LEITURA
 # ============================================
 def read_bme280():
+    if not HAS_BME280:
+        return None
     try:
-        # A leitura ocorre aqui
         data = bme280.sample(bus, bme280_addr) 
-        temp = data.temperature
-        hum = data.humidity
-        press = data.pressure
-        return temp, hum, press
+        return data.temperature, data.humidity, data.pressure
     except Exception as e:
         logging.error(f"Erro na leitura do BME280: {e}")
         return None
 
-# ============================================
-# FUNÇÃO DE LEITURA DO BH1750
-# ============================================
 def read_bh1750():
+    if not HAS_BH1750:
+        return None
     try:
         data = bus.read_i2c_block_data(bh1750_addr, bh1750_mode, 2)
         raw = (data[0] << 8) | data[1]
-        lux = raw / 1.2
-        return lux
+        return raw / 1.2
     except Exception as e:
         logging.error(f"Erro na leitura do BH1750: {e}")
         return None
-    
 # ============================================
 # FILTRO DE VALORES INVALIDOS
 # ============================================
